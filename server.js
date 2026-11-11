@@ -1,7 +1,9 @@
 const express = require("express");
 const path = require("path");
 const app = express();
-app.use(express.json());
+
+app.use(express.json());   // pour la page web (JSON)
+app.use(express.text());   // pour l'ESP32 (texte simple)
 app.use(express.static(path.join(__dirname, "public")));
 
 let lcd = { line1: "", line2: "" };
@@ -14,28 +16,40 @@ function log(qui, texte) {
   if (journal.length > 50) journal.shift();
 }
 
-// Appelé par l'ESP32 toutes les 2 s
+// ===== ESP32 =====
+// Reçoit : ligne1 \n ligne2 \n accusé (optionnel)
+// Répond : une ligne par élément, "M:texte" (message) ou "N:123" (nombre)
 app.post("/api/esp32", (req, res) => {
-  const { line1, line2, ack } = req.body;
-  if (line1 !== undefined) lcd.line1 = line1;
-  if (line2 !== undefined) lcd.line2 = line2;
+  const [l1 = "", l2 = "", ack = ""] = String(req.body || "").split("\n");
+  lcd.line1 = l1;
+  lcd.line2 = l2;
   lastSeen = Date.now();
   if (ack) log("esp32", ack);
-  const out = aEnvoyer;
+
+  const lignes = [
+    ...aEnvoyer.messages.map(m => "M:" + m.replace(/[\r\n]/g, " ")),
+    ...aEnvoyer.randoms.map(n => "N:" + n)
+  ];
   aEnvoyer = { messages: [], randoms: [] };
-  res.json(out);
+  res.type("text").send(lignes.join("\n"));
 });
 
-// Appelé par la page web
+// ===== Page web =====
 app.post("/api/message", (req, res) => {
-  const texte = String(req.body.text || "").slice(0, 100);
-  if (texte) { aEnvoyer.messages.push(texte); log("moi", texte); }
+  const texte = String((req.body && req.body.text) || "").slice(0, 100);
+  if (texte) {
+    aEnvoyer.messages.push(texte);
+    log("moi", texte);
+  }
   res.json({ ok: true });
 });
 
 app.post("/api/random", (req, res) => {
-  const v = parseInt(req.body.value);
-  if (!isNaN(v)) { aEnvoyer.randoms.push(v); log("moi", "Nombre aléatoire : " + v); }
+  const v = parseInt(req.body && req.body.value);
+  if (!isNaN(v)) {
+    aEnvoyer.randoms.push(v);
+    log("moi", "Nombre aléatoire : " + v);
+  }
   res.json({ ok: true });
 });
 
