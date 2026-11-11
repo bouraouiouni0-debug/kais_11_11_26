@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dashboard ESP32</title>
+<style>
+  body { font-family: sans-serif; max-width: 520px; margin: 20px auto; padding: 0 12px; }
+  .lcd { background: #2e7d32; color: #eaffea; font-family: monospace; font-size: 26px;
+         padding: 14px; border-radius: 8px; white-space: pre; min-height: 64px; }
+  #statut { font-weight: bold; }
+  input[type=text] { width: 65%; padding: 8px; }
+  button { padding: 8px 12px; }
+  #journal { background: #f3f3f3; padding: 10px; border-radius: 8px; height: 200px; overflow-y: auto; }
+  .esp32 { color: #1b5e20; } .moi { color: #0d47a1; }
+</style>
+</head>
+<body>
+<h2>Dashboard ESP32</h2>
+<p>ESP32 : <span id="statut">...</span></p>
+
+<h3>Écran LCD</h3>
+<div class="lcd" id="lcd"></div>
+
+<h3>Envoyer un message</h3>
+<input type="text" id="msg" placeholder="Votre message">
+<button onclick="envoyerMsg()">Envoyer</button>
+
+<h3>Nombres aléatoires</h3>
+<button onclick="envoyerRandom()">Envoyer un entier aléatoire</button>
+<label><input type="checkbox" id="auto" onchange="toggleAuto()"> auto (toutes les 5 s)</label>
+
+<h3>Journal</h3>
+<div id="journal"></div>
+
+<script>
+async function post(url, data) {
+  await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) });
+}
+function envoyerMsg() {
+  const t = document.getElementById("msg").value.trim();
+  if (t) { post("/api/message", { text: t }); document.getElementById("msg").value = ""; }
+}
+function envoyerRandom() { post("/api/random", { value: Math.floor(Math.random() * 1000) }); }
+let timer = null;
+function toggleAuto() {
+  if (document.getElementById("auto").checked) timer = setInterval(envoyerRandom, 5000);
+  else clearInterval(timer);
+}
+document.getElementById("msg").addEventListener("keydown", e => { if (e.key === "Enter") envoyerMsg(); });
+
+async function rafraichir() {
+  try {
+    const s = await (await fetch("/api/state")).json();
+    document.getElementById("lcd").textContent = s.lcd.line1 + "\n" + s.lcd.line2;
+    const st = document.getElementById("statut");
+    st.textContent = s.online ? "en ligne" : "hors ligne";
+    st.style.color = s.online ? "green" : "red";
+    document.getElementById("journal").innerHTML = s.journal.map(l =>
+      `<div class="${l.qui}">[${new Date(l.t).toLocaleTimeString()}] ${l.qui === "esp32" ? "ESP32" : "Moi"} : ${l.texte.replace(/</g, "&lt;")}</div>`
+    ).join("");
+  } catch (e) {}
+}
+setInterval(rafraichir, 1500);
+rafraichir();
+</script>
+</body>
+</html>
